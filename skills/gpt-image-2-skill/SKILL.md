@@ -3,7 +3,7 @@ name: gpt-image-2-skill
 description: This skill should be used when the user asks to "generate an image", "create a logo", "draw an icon", "edit this photo", "change background to transparent", "remove background", "use GPT image", "use Codex to draw", "用 GPT image 生成图片", "用 Codex 画图", "帮我生成一张图", "改成透明背景", "把这张图编辑一下", or any prompt-to-image or reference-image-edit task that benefits from a structured CLI returning JSON results and JSONL progress events. Supports OpenAI `gpt-image-2` (via `OPENAI_API_KEY` or OpenAI-compatible base URL) and Codex `image_generation` (via `~/.codex/auth.json`) under one command surface, with masks, custom sizes up to 4K, transparent backgrounds, and a raw request escape hatch.
 ---
 
-Run image generation and editing through one CLI surface that hides provider differences. The Node wrapper at `scripts/gpt_image_2_skill.cjs` resolves an underlying Rust binary (env override → bundled Skill binary → installed binary → Tauri App bundled CLI → repo `cargo run` → cached release → bootstrap download) and forwards every flag. On glibc Linux, release bootstrap tries the GNU archive first and then the static musl archive as the sandbox fallback.
+Run image generation and editing through one CLI surface that hides provider differences. Skill cwd is this directory. Prefer the CLI shipped next to the skill; the Node wrapper at `scripts/gpt_image_2_skill.cjs` uses that same binary first and otherwise falls back (env override → skill `scripts/` → `bin/<triple>/` → PATH → Tauri App). It does not `cargo run` the repo or download a GitHub release.
 
 ## When to use this skill
 
@@ -17,25 +17,70 @@ Run image generation and editing through one CLI surface that hides provider dif
 
 Always pass `--json` so the result is machine-readable. Add `--json-events` when progress visibility matters.
 
-## Local daemon (reuse one process)
+## Invoke the CLI in this skill directory
 
-`images generate` and `images edit` enqueue work on a loopback daemon at `http://127.0.0.1:8787/api`. Each CLI invocation is a **short-lived client**. The daemon is a second long-lived process and **must be reused** across a batch. Do not call `daemon stop` between pages.
+Do not invent a path under `%USERPROFILE%\.codex\skills\...` unless that directory is the cwd. First choice is the binary in `scripts/` next to this file:
 
-On Windows, PowerShell `& $cli` and Codex run that client inside a Job Object that kills child processes when the client exits. The binary breaks away from the Job (or starts via WMI when breakaway is blocked) so one daemon survives the whole loop. Seeing a brief extra `gpt-image-2-skill.exe` per page is the client and is expected; `daemon status` must keep the same `pid`.
+| OS | First choice | If that file is missing |
+|---|---|---|
+| Windows | `scripts\gpt-image-2-skill.exe` | `node scripts\gpt_image_2_skill.cjs` |
+| macOS / Linux | `scripts/gpt-image-2-skill` | `node scripts/gpt_image_2_skill.cjs` |
 
-Stderr `reusing daemon pid=...` means reuse is working. `starting shared daemon` on every image means the installed exe is stale — replace `scripts/gpt-image-2-skill.exe` with a build that includes this detach, then start once:
+Override only with `GPT_IMAGE_2_SKILL_BIN`. The node wrapper prefers the same `scripts/` binary before PATH or a downloaded copy.
+
+## Codex: enqueue, record `job_id`, poll later
+
+This is the required path when Codex (or any agent) generates **more than one** image. Do **not** use `Start-Process`, `Start-Job`, `-WindowStyle Hidden`, or `Start-Sleep` as a job runner. Those drop JSON, lose exit codes, and can kill the daemon when the parent script exits.
+
+Each page still has its own prompt, `--ref-image`, and `--out`. Use absolute paths. Prefer `--provider auto` or a name from `config inspect` (for example `ailili`). Do not pass `--provider openai` or `--provider codex` unless that name exists in config.
+
+### 1. Submit (foreground, `--no-wait`)
+
+`& $cli` (or the Unix binary) **must wait for enqueue to return**. That is one HTTP POST, not the full render. Capture stdout JSON. Save every `job_id` with its `--out`.
 
 ```powershell
-$cli = Join-Path $env:USERPROFILE '.codex\skills\gpt-image-2-skill\scripts\gpt-image-2-skill.exe'
-& $cli daemon start
+$cli = Join-Path $PWD 'scripts\gpt-image-2-skill.exe'
+$tickets = @()
 foreach ($page in $pages) {
-  & $cli --json --json-events --provider official-openai images edit `
-    --prompt $page.Text --ref-image $reference --out $outFile `
+  $outFile = Join-Path $output ($page[0] + '.png')
+  $raw = & $cli --json --no-wait --provider ailili images edit `
+    --prompt ($page[1] + ' ' + $base) --ref-image $ref --out $outFile `
     --format png --size 1536x2048 --quality medium --input-fidelity high
-  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+  if ($LASTEXITCODE -ne 0) { throw "enqueue failed $($page[0])" }
+  $r = $raw | ConvertFrom-Json
+  $tickets += [pscustomobject]@{ job_id = $r.job_id; out = $outFile; name = $page[0] }
 }
-# optional, after the batch: & $cli daemon stop
+@($tickets) | ConvertTo-Json -Depth 5 | Set-Content -Encoding utf8 $ticketFile
 ```
+
+A successful enqueue looks like `{ "ok": true, "queued": true, "job_id": "...", "out": "...", "ticket": { "job_id", "out" } }`. Stop this tool call after writing the ticket file. Do not wait for pixels here.
+
+### 2. Poll (later turn)
+
+```powershell
+& $cli --json jobs status --file $ticketFile
+```
+
+Read `pending`, `completed`, `failed`, `done`, `all_ok`, and `tasks[]`. If `pending > 0`, end the turn and poll again after 30–60 seconds. Do not busy-loop `Start-Sleep` for 10 minutes inside one command. When a task is `completed`, the CLI copies the image to the recorded `out`. Re-enqueue **only** `failed` names.
+
+`jobs status --id <job_id>` works for a single id.
+
+Daemon runs up to 10 jobs at once. Enqueue is sequential and cheap; renders overlap in the daemon.
+
+### One image
+
+`images generate` / `images edit` without `--no-wait` may block until `--out` exists. That is fine for a single page.
+
+### Local wait-all (humans, not Codex)
+
+`images fanout --jobs pages.json` starts child processes and blocks until every page finishes. Agents must not use it.
+
+| | Windows | macOS / Linux |
+|---|---|---|
+| CLI | `.\scripts\gpt-image-2-skill.exe` | `./scripts/gpt-image-2-skill` |
+| Submit | `& $cli --json --no-wait images edit ...` | `$CLI --json --no-wait images edit ...` |
+| Poll | `& $cli --json jobs status --file tickets.json` | `$CLI --json jobs status --file tickets.json` |
+| Daemon | Breaks away from the Job Object so it survives the client | `setsid` + ignore SIGHUP |
 
 ```bash
 # 1. Confirm runtime + provider readiness
@@ -75,7 +120,7 @@ node scripts/gpt_image_2_skill.cjs --json \
 node scripts/selftest.cjs
 ```
 
-Force a provider with `--provider openai`, `--provider codex`, or any named provider from `config inspect`; leave the default `--provider auto` to use `default_provider` first. Override the legacy OpenAI base URL with `--openai-api-base https://...`.
+Leave `--provider auto` unless `config inspect` lists a name to force. Do not pass `--provider openai` or `--provider codex` unless that exact name exists in config.
 
 ## Runtime freshness check
 
@@ -241,4 +286,4 @@ Load on demand for deeper detail:
 
 ## Codex compatibility
 
-The companion file `agents/openai.yaml` is read by Codex Skill runtime only (Claude Code ignores it). Both runtimes execute the commands above with `cwd` at the skill directory, so relative paths like `scripts/gpt_image_2_skill.cjs` resolve in either harness.
+The companion file `agents/openai.yaml` is read by Codex Skill runtime only (Claude Code ignores it). Both runtimes execute the commands above with `cwd` at the skill directory, so `scripts/gpt-image-2-skill.exe` (Windows), `scripts/gpt-image-2-skill` (macOS/Linux), and `scripts/gpt_image_2_skill.cjs` resolve without an absolute `.codex` path.

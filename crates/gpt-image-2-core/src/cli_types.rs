@@ -121,6 +121,9 @@ pub struct Cli {
     pub openai_api_base: String,
     #[arg(long, action = ArgAction::SetTrue)]
     pub json_events: bool,
+    /// Enqueue on the local daemon and return `job_id` without waiting for the image.
+    #[arg(long, action = ArgAction::SetTrue, global = true)]
+    pub no_wait: bool,
     #[command(subcommand)]
     pub command: Commands,
 }

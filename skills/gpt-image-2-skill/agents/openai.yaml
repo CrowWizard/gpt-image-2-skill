@@ -1,7 +1,7 @@
 interface:
   display_name: "GPT Image 2 Skill"
   short_description: "Generate images with OpenAI or Codex auth through the Rust CLI runtime"
-  default_prompt: "Use $gpt-image-2-skill to inspect provider auth, choose openai or codex, generate or edit images, and consume progress events from the Skill runtime wrapper."
+  default_prompt: "Use $gpt-image-2-skill with the CLI in this skill directory. For one image, call images generate/edit with --json. For many images, enqueue each with --no-wait, save every job_id plus --out to a ticket file, then poll with jobs status --file. Never use Start-Process or Hidden background PowerShell. Use --provider auto or a configured name; do not pass openai or codex unless those names exist in config."
 
 policy:
   allow_implicit_invocation: true

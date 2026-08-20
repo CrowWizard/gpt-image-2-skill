@@ -93,6 +93,7 @@ fn explicit_builtin_name_uses_configured_provider_when_present() {
         endpoint: DEFAULT_CODEX_ENDPOINT.to_string(),
         openai_api_base: DEFAULT_OPENAI_API_BASE.to_string(),
         json_events: false,
+        no_wait: false,
         command: Commands::Doctor,
     };
     let selection = select_image_provider(&cli).unwrap();
@@ -137,6 +138,7 @@ fn configured_openai_name_loads_config_secret_for_image_auth() {
         endpoint: DEFAULT_CODEX_ENDPOINT.to_string(),
         openai_api_base: DEFAULT_OPENAI_API_BASE.to_string(),
         json_events: false,
+        no_wait: false,
         command: Commands::Doctor,
     };
     let selection = select_image_provider(&cli).unwrap();

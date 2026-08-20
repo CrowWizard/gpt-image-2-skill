@@ -92,10 +92,21 @@ fn run_images_via_daemon(cli: &Cli, command: &ImagesSubcommand) -> Result<Value,
         .and_then(Value::as_str)
         .ok_or_else(|| "Daemon enqueue response did not include job_id.".to_string())?
         .to_string();
-    if daemon::no_wait() {
+    if cli.no_wait || daemon::no_wait() {
+        remember_ticket(&job_id, &out);
         payload["ok"] = json!(true);
         payload["command"] = json!(command_name(command));
         payload["queued"] = json!(true);
+        payload["job_id"] = json!(job_id);
+        payload["out"] = json!(out);
+        payload["status"] = payload
+            .get("status")
+            .cloned()
+            .unwrap_or_else(|| json!("queued"));
+        payload["ticket"] = json!({
+            "job_id": job_id,
+            "out": out,
+        });
         return Ok(payload);
     }
     let job = wait_for_job(&client, &info, &job_id)?;
@@ -222,21 +233,51 @@ fn wait_for_job(
     }
 }
 
-fn is_terminal(status: &str) -> bool {
+pub(crate) fn remember_ticket(job_id: &str, out: &str) {
+    let path = ticket_store_path();
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    let mut map = read_ticket_map();
+    map.insert(job_id.to_string(), json!(out));
+    if let Ok(payload) = serde_json::to_string_pretty(&map) {
+        let _ = fs::write(path, payload);
+    }
+}
+
+pub(crate) fn lookup_ticket_out(job_id: &str) -> Option<String> {
+    read_ticket_map()
+        .get(job_id)
+        .and_then(Value::as_str)
+        .map(str::to_string)
+}
+
+fn ticket_store_path() -> PathBuf {
+    gpt_image_2_core::shared_config_dir().join("client-outs.json")
+}
+
+fn read_ticket_map() -> serde_json::Map<String, Value> {
+    fs::read_to_string(ticket_store_path())
+        .ok()
+        .and_then(|raw| serde_json::from_str(&raw).ok())
+        .unwrap_or_default()
+}
+
+pub(crate) fn is_terminal(status: &str) -> bool {
     matches!(
         status,
         "completed" | "partial_failed" | "failed" | "cancelled" | "canceled"
     )
 }
 
-fn job_ok(job: &Value) -> bool {
+pub(crate) fn job_ok(job: &Value) -> bool {
     matches!(
         job.get("status").and_then(Value::as_str),
         Some("completed" | "partial_failed")
     )
 }
 
-fn copy_outputs_to(job: &Value, out: &Path) -> Result<Value, String> {
+pub(crate) fn copy_outputs_to(job: &Value, out: &Path) -> Result<Value, String> {
     let mut files = job
         .get("outputs")
         .and_then(Value::as_array)

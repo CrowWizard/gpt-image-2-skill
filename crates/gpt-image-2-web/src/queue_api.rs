@@ -14,7 +14,7 @@ pub(crate) async fn set_queue_concurrency(
     State(state): State<JobQueueState>,
     Json(body): Json<QueueConcurrencyBody>,
 ) -> ApiResult {
-    let max_parallel = body.max_parallel.clamp(1, 8);
+    let max_parallel = body.max_parallel.clamp(1, 10);
     let queue = {
         let mut inner = state
             .inner

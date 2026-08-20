@@ -71,7 +71,7 @@ pub(crate) use server::*;
 pub(crate) use support::*;
 pub(crate) use types::*;
 
-const LOCAL_MAX_PARALLEL: usize = 3;
+const LOCAL_MAX_PARALLEL: usize = 10;
 
 /// Docker/Web entry: serve `/api` plus the static UI.
 pub fn run_web() -> Result<(), Box<dyn std::error::Error>> {

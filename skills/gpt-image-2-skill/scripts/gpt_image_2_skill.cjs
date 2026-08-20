@@ -6,19 +6,8 @@ const path = require("node:path");
 const childProcess = require("node:child_process");
 
 const CLI_NAME = "gpt-image-2-skill";
-const VERSION = "0.7.3";
-const REPOSITORY = "Wangnov/gpt-image-2-skill";
-const RELEASE_BASE_URL = `https://github.com/${REPOSITORY}/releases/download/v${VERSION}`;
-const REPO_ROOT = path.resolve(__dirname, "..", "..", "..");
-const CACHE_ROOT = path.join(
-  process.env.XDG_CACHE_HOME || path.join(os.homedir(), ".cache"),
-  CLI_NAME,
-  VERSION
-);
 const BIN_ENV = "GPT_IMAGE_2_SKILL_BIN";
 const APP_BIN_ENV = "GPT_IMAGE_2_SKILL_APP_BIN";
-const REPO_ENV = "GPT_IMAGE_2_SKILL_REPO_ROOT";
-const SKIP_BOOTSTRAP_ENV = "GPT_IMAGE_2_SKILL_SKIP_BOOTSTRAP";
 const SKILL_ROOT = path.resolve(__dirname, "..");
 
 function wantsJson(argv) {
@@ -42,11 +31,6 @@ function emitFailure(argv, message, code = "runtime_unavailable", detail = null)
     process.stderr.write(`${message}\n`);
   }
   return 1;
-}
-
-function truthyEnv(name) {
-  const value = (process.env[name] || "").trim().toLowerCase();
-  return value === "1" || value === "true" || value === "yes" || value === "on";
 }
 
 function isExecutableFile(filePath) {
@@ -109,6 +93,20 @@ function resolveFromEnvBinary() {
   return { argvPrefix: [candidate], cwd: null, source: "env" };
 }
 
+function resolveFromSkillScripts() {
+  const binaryName = process.platform === "win32" ? `${CLI_NAME}.exe` : CLI_NAME;
+  const candidates = [
+    path.join(SKILL_ROOT, "scripts", binaryName),
+    path.join(SKILL_ROOT, binaryName),
+  ];
+  for (const candidate of candidates) {
+    if (isExecutableFile(candidate)) {
+      return { argvPrefix: [candidate], cwd: null, source: "skill-scripts" };
+    }
+  }
+  return null;
+}
+
 function resolveFromBundledBinary() {
   const binaryName = process.platform === "win32" ? `${CLI_NAME}.exe` : CLI_NAME;
   for (const { triple } of detectTargets()) {
@@ -167,39 +165,6 @@ function resolveFromAppBundle() {
   return null;
 }
 
-function isRepoRoot(candidate) {
-  return (
-    fs.existsSync(path.join(candidate, "Cargo.toml")) &&
-    fs.existsSync(path.join(candidate, "crates", CLI_NAME, "Cargo.toml"))
-  );
-}
-
-function repoRootCandidate() {
-  const configured = (process.env[REPO_ENV] || "").trim();
-  if (configured) {
-    const candidate = path.resolve(configured);
-    if (isRepoRoot(candidate)) {
-      return candidate;
-    }
-  }
-  return isRepoRoot(REPO_ROOT) ? REPO_ROOT : null;
-}
-
-function resolveFromRepo() {
-  const repoRoot = repoRootCandidate();
-  if (!repoRoot) {
-    return null;
-  }
-  if (!resolveExecutable("cargo")) {
-    return null;
-  }
-  return {
-    argvPrefix: ["cargo", "run", "-q", "-p", CLI_NAME, "--"],
-    cwd: repoRoot,
-    source: "repo",
-  };
-}
-
 function detectLibc() {
   if (process.platform !== "linux") {
     return null;
@@ -245,127 +210,7 @@ function detectTargets() {
   throw new Error(`Unsupported platform: ${process.platform}`);
 }
 
-function cacheBinaryPath(target, extension) {
-  return path.join(CACHE_ROOT, target, `${CLI_NAME}${extension}`);
-}
-
-function resolveFromCache() {
-  for (const { triple, extension } of detectTargets()) {
-    const candidate = cacheBinaryPath(triple, extension);
-    if (!isExecutableFile(candidate)) {
-      continue;
-    }
-    const runtime = { argvPrefix: [candidate], cwd: null, source: "cache" };
-    if (runtimeSupportsSharedConfig(runtime)) {
-      return runtime;
-    }
-  }
-  return null;
-}
-
-function assetName(target) {
-  return `${CLI_NAME}-${target}${target.includes("windows") ? ".zip" : ".tar.xz"}`;
-}
-
-function findFile(rootDir, fileName) {
-  const stack = [rootDir];
-  while (stack.length > 0) {
-    const current = stack.pop();
-    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
-      const fullPath = path.join(current, entry.name);
-      if (entry.isFile() && entry.name === fileName) {
-        return fullPath;
-      }
-      if (entry.isDirectory()) {
-        stack.push(fullPath);
-      }
-    }
-  }
-  return null;
-}
-
-async function downloadArchive(url, archivePath) {
-  const response = await fetch(url, {
-    headers: {
-      "user-agent": `${CLI_NAME}/${VERSION} skill-wrapper`,
-    },
-  });
-  if (!response.ok) {
-    throw new Error(`Release asset unavailable: ${url} (HTTP ${response.status})`);
-  }
-  const bytes = Buffer.from(await response.arrayBuffer());
-  fs.writeFileSync(archivePath, bytes);
-}
-
-function extractArchive(archivePath, extractDir) {
-  const tarBinary = resolveExecutable("tar");
-  if (!tarBinary) {
-    throw new Error("Archive extraction requires tar in PATH.");
-  }
-  const result = childProcess.spawnSync(tarBinary, ["-xf", archivePath, "-C", extractDir], {
-    encoding: "utf8",
-  });
-  if (result.error) {
-    throw result.error;
-  }
-  if (result.status !== 0) {
-    throw new Error(result.stderr.trim() || `Unable to extract ${archivePath}`);
-  }
-}
-
-async function bootstrapReleaseBinary() {
-  if (truthyEnv(SKIP_BOOTSTRAP_ENV)) {
-    return null;
-  }
-  const errors = [];
-
-  for (const { triple, extension } of detectTargets()) {
-    const destination = cacheBinaryPath(triple, extension);
-    if (isExecutableFile(destination)) {
-      const runtime = { argvPrefix: [destination], cwd: null, source: "cache" };
-      if (runtimeSupportsSharedConfig(runtime)) {
-        return runtime;
-      }
-    }
-
-    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), `${CLI_NAME}-bootstrap-`));
-    try {
-      fs.mkdirSync(path.dirname(destination), { recursive: true });
-      const archiveName = assetName(triple);
-      const archivePath = path.join(tempRoot, archiveName);
-      await downloadArchive(`${RELEASE_BASE_URL}/${archiveName}`, archivePath);
-      const extractDir = path.join(tempRoot, "extract");
-      fs.mkdirSync(extractDir, { recursive: true });
-      extractArchive(archivePath, extractDir);
-
-      const binaryName = `${CLI_NAME}${extension}`;
-      const extractedBinary = findFile(extractDir, binaryName);
-      if (!extractedBinary) {
-        throw new Error(`Unable to locate ${binaryName} inside ${archiveName}`);
-      }
-      fs.copyFileSync(extractedBinary, destination);
-      if (process.platform !== "win32") {
-        fs.chmodSync(destination, 0o755);
-      }
-      const runtime = { argvPrefix: [destination], cwd: null, source: "bootstrap" };
-      if (runtimeSupportsSharedConfig(runtime)) {
-        return runtime;
-      }
-      errors.push(`${triple}: downloaded runtime failed self-check`);
-    } catch (error) {
-      errors.push(`${triple}: ${error instanceof Error ? error.message : String(error)}`);
-    } finally {
-      fs.rmSync(tempRoot, { recursive: true, force: true });
-    }
-  }
-
-  throw new Error(`Unable to bootstrap a compatible ${CLI_NAME} runtime. Tried: ${errors.join("; ")}`);
-}
-
 function runtimeSupportsSharedConfig(runtime) {
-  if (runtime.source === "repo") {
-    return true;
-  }
   const [command, ...prefixArgs] = runtime.argvPrefix;
   const result = childProcess.spawnSync(command, [...prefixArgs, "--json", "config", "path"], {
     cwd: runtime.cwd || undefined,
@@ -383,25 +228,28 @@ function runtimeSupportsSharedConfig(runtime) {
   }
 }
 
-async function resolveRuntime() {
-  for (const resolver of [resolveFromEnvBinary, resolveFromBundledBinary, resolveFromPath, resolveFromAppBundle, resolveFromRepo, resolveFromCache]) {
+function resolveRuntime() {
+  for (const resolver of [
+    resolveFromEnvBinary,
+    resolveFromSkillScripts,
+    resolveFromBundledBinary,
+    resolveFromPath,
+    resolveFromAppBundle,
+  ]) {
     const runtime = resolver();
     if (runtime && runtimeSupportsSharedConfig(runtime)) {
       return runtime;
     }
   }
-  const runtime = await bootstrapReleaseBinary();
-  if (runtime && runtimeSupportsSharedConfig(runtime)) {
-    return runtime;
-  }
+  const binaryName = process.platform === "win32" ? `${CLI_NAME}.exe` : CLI_NAME;
   throw new Error(
-    "gpt-image-2-skill runtime is unavailable. Install the binary, point GPT_IMAGE_2_SKILL_BIN at it, or publish release assets for this version."
+    `gpt-image-2-skill runtime is unavailable. Place ${binaryName} next to this skill (scripts/${binaryName}) or set ${BIN_ENV}.`
   );
 }
 
-async function main(argv = process.argv.slice(2)) {
+function main(argv = process.argv.slice(2)) {
   try {
-    const runtime = await resolveRuntime();
+    const runtime = resolveRuntime();
     const [command, ...prefixArgs] = runtime.argvPrefix;
     const result = childProcess.spawnSync(command, [...prefixArgs, ...argv], {
       cwd: runtime.cwd || undefined,
@@ -416,6 +264,4 @@ async function main(argv = process.argv.slice(2)) {
   }
 }
 
-main().then((code) => {
-  process.exit(code);
-});
+process.exit(main());

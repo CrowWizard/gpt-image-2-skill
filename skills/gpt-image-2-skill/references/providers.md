@@ -133,10 +133,9 @@ Treat `unrecognized subcommand 'transparent'` or any documented command missing 
 The Node wrapper at `scripts/gpt_image_2_skill.cjs` resolves the underlying Rust binary in this order:
 
 1. `GPT_IMAGE_2_SKILL_BIN` env (absolute path to a binary)
-2. `gpt-image-2-skill` on `PATH` (e.g. installed via cargo, brew, npm)
-3. Tauri App bundled CLI (`GPT_IMAGE_2_SKILL_APP_BIN` or standard app bundle locations)
-4. Repo-local `cargo run -q -p gpt-image-2-skill --` (only if `Cargo.toml` and `cargo` exist)
-5. Cached release binary at `${XDG_CACHE_HOME:-~/.cache}/gpt-image-2-skill/<version>/<target>/`
-6. Bootstrap: download the matching GitHub Release archive, extract the binary, cache it
+2. Skill-local CLI: `scripts/gpt-image-2-skill.exe` on Windows, `scripts/gpt-image-2-skill` on macOS/Linux (then the skill-root binary of the same name)
+3. Bundled `bin/<target-triple>/` inside the skill directory
+4. `gpt-image-2-skill` on `PATH`
+5. Tauri App bundled CLI (`GPT_IMAGE_2_SKILL_APP_BIN` or standard app bundle locations)
 
-Set `GPT_IMAGE_2_SKILL_SKIP_BOOTSTRAP=1` to disable the download step.
+The wrapper does not `cargo run` the git repo, does not use `~/.cache/gpt-image-2-skill/`, and does not download a GitHub Release.

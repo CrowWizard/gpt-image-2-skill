@@ -3,10 +3,18 @@ use gpt_image_2_core::{Cli, Commands};
 
 mod client;
 mod daemon;
+mod fanout;
+mod jobs;
 
 pub fn run(argv: &[String]) -> i32 {
     if is_daemon_command(argv) {
         return daemon::dispatch(argv);
+    }
+    if jobs::is_command(argv) {
+        return jobs::dispatch(argv);
+    }
+    if fanout::is_command(argv) {
+        return fanout::dispatch(argv);
     }
     if daemon::skip_daemon() {
         return gpt_image_2_core::run(argv);

@@ -6,16 +6,12 @@ Decision tree for the most common failures. Always run `--json doctor` first to 
 
 The Node wrapper could not resolve a Rust binary.
 
-Resolution order is: `GPT_IMAGE_2_SKILL_BIN` → `PATH` → Tauri App bundled CLI → repo-local `cargo run` → cached release binary → bootstrap download.
+Resolution order is: `GPT_IMAGE_2_SKILL_BIN` → skill `scripts/gpt-image-2-skill[.exe]` → `bin/<triple>/` → `PATH` → Tauri App bundled CLI.
 
 Fixes:
 
-- `cargo install gpt-image-2-skill --locked`
-- `brew install wangnov/tap/gpt-image-2-skill`
-- `npm install --global gpt-image-2-skill`
-- or set `GPT_IMAGE_2_SKILL_BIN=/abs/path/to/gpt-image-2-skill`
-
-If bootstrap is undesirable in CI, set `GPT_IMAGE_2_SKILL_SKIP_BOOTSTRAP=1`.
+- Put the CLI next to the skill: `scripts/gpt-image-2-skill.exe` (Windows) or `scripts/gpt-image-2-skill` (macOS/Linux)
+- or set `GPT_IMAGE_2_SKILL_BIN` to an absolute binary path
 
 ## Documented command is missing
 
@@ -125,11 +121,11 @@ OpenAI may reject prompts. The runtime surfaces the upstream error verbatim unde
 
 ## Windows: a new `gpt-image-2-skill.exe` on every image
 
-A PowerShell `foreach` that calls `& $cli images edit` starts a new **client** process each iteration. That is expected. The long-lived daemon at `http://127.0.0.1:8787/api` must keep the same pid.
+Prefer `scripts\gpt-image-2-skill.exe` in the skill directory. Codex must enqueue with `--no-wait`, save `job_id`, and poll `jobs status --file tickets.json`. Do not `Start-Process -WindowStyle Hidden`. A single blocking `images edit` is fine for one page. The daemon at `http://127.0.0.1:8787/api` must keep the same pid.
 
 If every page prints `starting shared daemon` (instead of `reusing daemon pid=...`), or `daemon status` pid changes between images, the client is still inside a Windows Job Object that kills the daemon when `& $cli` returns. Fix:
 
-1. Replace `scripts/gpt-image-2-skill.exe` with a build that detaches from the Job (breakaway / WMI). Older binaries spawn the daemon as a child of the client, so it dies at the end of each page.
+1. Replace `scripts\gpt-image-2-skill.exe` with a build that detaches from the Job (breakaway / WMI). Older binaries spawn the daemon as a child of the client, so it dies at the end of each page.
 2. Start once before the loop: `& $cli daemon start`
 3. Confirm `& $cli daemon status` reports the same `pid` after page 1 and page 2.
 4. Do not `daemon stop` until the batch is done.
