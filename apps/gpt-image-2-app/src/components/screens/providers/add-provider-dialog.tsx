@@ -211,54 +211,20 @@ export function AddProviderDialog({
       await upsert.mutateAsync({
         name: trimmedName,
         cfg: {
-          type: kind,
-          api_base: kind === "codex" ? undefined : apiBase || undefined,
+          type: "openai-compatible",
+          api_base: apiBase || undefined,
           model: model || undefined,
-          supports_n: kind === "codex" ? false : supportsN,
+          supports_n: false,
           edit_region_mode: editRegionMode,
           proxy: proxyOverride,
-          credentials:
-            kind === "codex"
-              ? {
-                  ...(codexAccountId
-                    ? {
-                        account_id: {
-                          source: "file" as const,
-                          value: codexAccountId,
-                        },
-                      }
-                    : editing && provider?.credentials.account_id
-                      ? { account_id: fileCredential("") }
-                      : {}),
-                  ...(codexAccessToken
-                    ? {
-                        access_token: {
-                          source: "file" as const,
-                          value: codexAccessToken,
-                        },
-                      }
-                    : editing && provider?.credentials.access_token
-                      ? { access_token: fileCredential("") }
-                      : {}),
-                  ...(codexRefreshToken
-                    ? {
-                        refresh_token: {
-                          source: "file" as const,
-                          value: codexRefreshToken,
-                        },
-                      }
-                    : editing && provider?.credentials.refresh_token
-                      ? { refresh_token: fileCredential("") }
-                      : {}),
-                }
-              : {
-                  api_key:
-                    keySource === "file"
-                      ? fileCredential(apiKey)
-                      : keySource === "env"
-                        ? { source: "env", env: envName }
-                        : keychainCredential(apiKey),
-                },
+          credentials: {
+            api_key:
+              keySource === "file"
+                ? fileCredential(apiKey)
+                : keySource === "env"
+                  ? { source: "env", env: envName }
+                  : keychainCredential(apiKey),
+          },
           set_default: !editing,
           allow_overwrite: editing,
         },
@@ -321,38 +287,14 @@ export function AddProviderDialog({
             disabled={editing}
           />
         </Field>
-        <Field label="类型">
-          <Segmented
-            value={kind}
-            onChange={(next) => {
-              setKind(next);
-              setSupportsN(next === "openai");
-              setEditRegionMode(defaultEditRegionMode(next));
-              if (browserRuntime) setKeySource("file");
-            }}
-            ariaLabel="凭证类型"
-            className="w-full overflow-x-auto scrollbar-none"
-            options={
-              browserRuntime
-                ? [{ value: "openai-compatible", label: "OpenAI 兼容" }]
-                : [
-                    { value: "openai-compatible", label: "OpenAI 兼容" },
-                    { value: "openai", label: "OpenAI 官方" },
-                    { value: "codex", label: "Codex" },
-                  ]
-            }
+        <Field label="服务地址">
+          <Input
+            value={apiBase}
+            onChange={(e) => setApiBase(e.target.value)}
+            placeholder="https://example.com/v1"
+            monospace
           />
         </Field>
-        {kind !== "codex" && (
-          <Field label="服务地址">
-            <Input
-              value={apiBase}
-              onChange={(e) => setApiBase(e.target.value)}
-              placeholder="https://example.com/v1"
-              monospace
-            />
-          </Field>
-        )}
         <Field label="模型">
           <Input
             value={model}
@@ -362,103 +304,23 @@ export function AddProviderDialog({
           />
         </Field>
         <Field
-          label="批量策略"
-          hint={
-            kind === "codex"
-              ? "Codex 会由 App 自动并行生成多张"
-              : "不确定时选「App 自动并行」最稳"
-          }
-        >
-          {kind === "codex" ? (
-            <div className="flex h-8 items-center justify-between rounded-md border border-border bg-sunken px-2.5 text-[12px]">
-              <span className="font-semibold">App 自动并行</span>
-              <span className="text-faint">适合批量生成</span>
-            </div>
-          ) : (
-            <Segmented
-              value={supportsN ? "yes" : "no"}
-              onChange={(value) => setSupportsN(value === "yes")}
-              ariaLabel="批量策略"
-              options={[
-                { value: "no", label: "App 自动并行" },
-                { value: "yes", label: "接口一次返回多张" },
-              ]}
-            />
-          )}
-        </Field>
-        <Field
           label="局部编辑"
-          hint={
-            kind === "openai"
-              ? "OpenAI 官方可使用精确遮罩"
-              : "不确定时选「软选区参考」最稳"
-          }
+          hint="不确定时选「软选区参考」最稳。多张输出由 App 并行多次 n=1 请求。"
         >
-          {kind === "codex" ? (
-            <div className="flex h-8 items-center justify-between rounded-md border border-border bg-sunken px-2.5 text-[12px]">
-              <span className="font-semibold">软选区参考</span>
-              <span className="text-faint">适合当前 Codex 通道</span>
-            </div>
-          ) : (
-            <Segmented
-              value={editRegionMode}
-              onChange={setEditRegionMode}
-              ariaLabel="局部编辑模式"
-              className="w-full overflow-x-auto scrollbar-none"
-              options={[
-                { value: "reference-hint", label: "软选区参考" },
-                { value: "native-mask", label: "精确遮罩" },
-                { value: "none", label: "不支持" },
-              ]}
-            />
-          )}
+          <Segmented
+            value={editRegionMode}
+            onChange={setEditRegionMode}
+            ariaLabel="局部编辑模式"
+            className="w-full overflow-x-auto scrollbar-none"
+            options={[
+              { value: "reference-hint", label: "软选区参考" },
+              { value: "native-mask", label: "精确遮罩" },
+              { value: "none", label: "不支持" },
+            ]}
+          />
         </Field>
       </div>
-      {kind === "codex" && (
-        <div className="mt-1 grid gap-3.5">
-          <Field
-            label="账号 ID"
-            hint={editing ? "留空会保留原值。" : undefined}
-          >
-            <Input
-              value={codexAccountId}
-              onChange={(e) => setCodexAccountId(e.target.value)}
-              placeholder={
-                copy.kind === "http"
-                  ? "可留空，使用后端服务已登录账号"
-                  : "可留空，使用桌面 App 已登录账号"
-              }
-              monospace
-            />
-          </Field>
-          <Field
-            label="Access Token"
-            hint={editing ? "留空会保留原值。" : undefined}
-          >
-            <Input
-              value={codexAccessToken}
-              onChange={(e) => setCodexAccessToken(e.target.value)}
-              placeholder="eyJ…"
-              type="password"
-              monospace
-            />
-          </Field>
-          <Field
-            label="Refresh Token"
-            hint={editing ? "留空会保留原值。" : undefined}
-          >
-            <Input
-              value={codexRefreshToken}
-              onChange={(e) => setCodexRefreshToken(e.target.value)}
-              placeholder="可选"
-              type="password"
-              monospace
-            />
-          </Field>
-        </div>
-      )}
-      {kind !== "codex" && (
-        <div className="mt-1 grid gap-3.5">
+      <div className="mt-1 grid gap-3.5">
           <Field label="密钥保存方式">
             <Segmented
               value={keySource}
@@ -517,7 +379,6 @@ export function AddProviderDialog({
             </>
           )}
         </div>
-      )}
       {api.kind !== "browser" && (
         <div className="mt-1 grid gap-3.5 border-t border-border-faint pt-3.5">
           <Field

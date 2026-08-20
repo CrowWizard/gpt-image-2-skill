@@ -1,6 +1,7 @@
 #![allow(unused_imports)]
 
 use super::*;
+use std::path::Path;
 
 pub(crate) fn read_body_json(path: &str) -> Result<Value, AppError> {
     let raw = if path == "-" {
@@ -42,11 +43,14 @@ pub(crate) fn configured_provider_selection(
         .map(normalize_edit_region_mode)
         .transpose()?;
     match provider.provider_type.as_str() {
-        "openai" | "openai-compatible" => {
-            let api_base = provider
-                .api_base
-                .clone()
-                .unwrap_or_else(|| DEFAULT_OPENAI_API_BASE.to_string());
+        "openai-compatible" | "openai" => {
+            let api_base = provider.api_base.clone().ok_or_else(|| {
+                AppError::new(
+                    "invalid_provider_config",
+                    "Custom providers require api_base.",
+                )
+                .with_detail(json!({"provider": requested}))
+            })?;
             if api_key_override
                 .map(|value| value.trim().is_empty())
                 .unwrap_or(true)
@@ -64,38 +68,15 @@ pub(crate) fn configured_provider_selection(
                     .model
                     .clone()
                     .unwrap_or_else(|| DEFAULT_OPENAI_MODEL.to_string()),
-                supports_n: provider
-                    .supports_n
-                    .unwrap_or(provider.provider_type == "openai"),
-                edit_region_mode: edit_region_mode.unwrap_or_else(|| {
-                    default_edit_region_mode(&provider.provider_type).to_string()
-                }),
-            })
-        }
-        "codex" => {
-            let _ = get_provider_credential(requested, provider, "access_token")?;
-            Ok(ProviderSelection {
-                requested: requested.to_string(),
-                resolved: requested.to_string(),
-                reason: reason.to_string(),
-                kind: ProviderKind::Codex,
-                api_base: DEFAULT_OPENAI_API_BASE.to_string(),
-                codex_endpoint: provider
-                    .endpoint
-                    .clone()
-                    .unwrap_or_else(|| DEFAULT_CODEX_ENDPOINT.to_string()),
-                default_model: provider
-                    .model
-                    .clone()
-                    .unwrap_or_else(|| DEFAULT_CODEX_MODEL.to_string()),
                 supports_n: false,
-                edit_region_mode: edit_region_mode
-                    .unwrap_or_else(|| EDIT_REGION_REFERENCE_HINT.to_string()),
+                edit_region_mode: edit_region_mode.unwrap_or_else(|| {
+                    default_edit_region_mode("openai-compatible").to_string()
+                }),
             })
         }
         other => Err(AppError::new(
             "provider_kind_unsupported",
-            format!("Unsupported provider type: {other}"),
+            format!("Unsupported provider type: {other}. Only openai-compatible custom backends are enabled."),
         )
         .with_detail(json!({"provider": requested, "type": other}))),
     }
@@ -144,70 +125,38 @@ pub(crate) fn select_configured_provider(
     configured_provider_selection(requested, provider, reason, cli.api_key.as_deref())
 }
 
+fn no_custom_provider_error(config_path: &Path, config: &AppConfig) -> AppError {
+    AppError::new(
+        "provider_unavailable",
+        "No custom openai-compatible provider is configured.",
+    )
+    .with_detail(json!({
+        "config_file": config_path.display().to_string(),
+        "configured_providers": config.providers.keys().cloned().collect::<Vec<_>>(),
+    }))
+}
+
 pub(crate) fn select_builtin_provider(
     cli: &Cli,
     requested: &str,
 ) -> Result<ProviderSelection, AppError> {
-    if matches!(requested, "openai" | "codex") {
-        let config_path = cli_config_path(cli);
-        let config = load_app_config(&config_path)?;
-        if let Some(provider) = config.providers.get(requested) {
-            return configured_provider_selection(
-                requested,
-                provider,
-                "explicit_config_provider",
-                cli.api_key.as_deref(),
-            );
-        }
-    }
-
-    let auth_path = PathBuf::from(&cli.auth_file);
-    let openai_ready = inspect_openai_auth(cli.api_key.as_deref())
-        .get("ready")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
-    let codex_ready = inspect_codex_auth_file(&auth_path)
-        .get("ready")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
     match requested {
-        "openai" => {
-            if !openai_ready {
-                return Err(AppError::new(
-                    "api_key_missing",
-                    format!("Missing {}.", OPENAI_API_KEY_ENV),
-                ));
+        "openai" | "codex" => {
+            let config_path = cli_config_path(cli);
+            let config = load_app_config(&config_path)?;
+            if let Some(provider) = config.providers.get(requested) {
+                return configured_provider_selection(
+                    requested,
+                    provider,
+                    "explicit_config_provider",
+                    cli.api_key.as_deref(),
+                );
             }
-            Ok(ProviderSelection {
-                requested: requested.to_string(),
-                resolved: "openai".to_string(),
-                reason: "explicit".to_string(),
-                kind: ProviderKind::OpenAi,
-                api_base: cli.openai_api_base.clone(),
-                codex_endpoint: cli.endpoint.clone(),
-                default_model: DEFAULT_OPENAI_MODEL.to_string(),
-                supports_n: true,
-                edit_region_mode: EDIT_REGION_NATIVE_MASK.to_string(),
-            })
-        }
-        "codex" => {
-            if !codex_ready {
-                return Err(AppError::new(
-                    "access_token_missing",
-                    format!("Missing access_token in {}", auth_path.display()),
-                ));
-            }
-            Ok(ProviderSelection {
-                requested: requested.to_string(),
-                resolved: "codex".to_string(),
-                reason: "explicit".to_string(),
-                kind: ProviderKind::Codex,
-                api_base: cli.openai_api_base.clone(),
-                codex_endpoint: cli.endpoint.clone(),
-                default_model: DEFAULT_CODEX_MODEL.to_string(),
-                supports_n: false,
-                edit_region_mode: EDIT_REGION_REFERENCE_HINT.to_string(),
-            })
+            Err(AppError::new(
+                "provider_kind_unsupported",
+                "Built-in openai and codex backends are disabled. Add an openai-compatible provider in config.",
+            )
+            .with_detail(json!({"provider": requested})))
         }
         "auto" => {
             let config_path = cli_config_path(cli);
@@ -222,41 +171,16 @@ pub(crate) fn select_builtin_provider(
                     cli.api_key.as_deref(),
                 );
             }
-            if openai_ready {
-                Ok(ProviderSelection {
-                    requested: "auto".to_string(),
-                    resolved: "openai".to_string(),
-                    reason: "auto_openai_api_key".to_string(),
-                    kind: ProviderKind::OpenAi,
-                    api_base: cli.openai_api_base.clone(),
-                    codex_endpoint: cli.endpoint.clone(),
-                    default_model: DEFAULT_OPENAI_MODEL.to_string(),
-                    supports_n: true,
-                    edit_region_mode: EDIT_REGION_NATIVE_MASK.to_string(),
-                })
-            } else if codex_ready {
-                Ok(ProviderSelection {
-                    requested: "auto".to_string(),
-                    resolved: "codex".to_string(),
-                    reason: "auto_codex_auth".to_string(),
-                    kind: ProviderKind::Codex,
-                    api_base: cli.openai_api_base.clone(),
-                    codex_endpoint: cli.endpoint.clone(),
-                    default_model: DEFAULT_CODEX_MODEL.to_string(),
-                    supports_n: false,
-                    edit_region_mode: EDIT_REGION_REFERENCE_HINT.to_string(),
-                })
-            } else {
-                Err(
-                    AppError::new("provider_unavailable", "No usable provider auth was found.")
-                        .with_detail(json!({
-                            "openai": inspect_openai_auth(cli.api_key.as_deref()),
-                            "codex": inspect_codex_auth_file(&auth_path),
-                            "config_file": config_path.display().to_string(),
-                            "configured_providers": config.providers.keys().cloned().collect::<Vec<_>>(),
-                        })),
-                )
+            if config.providers.len() == 1 {
+                let (name, provider) = config.providers.iter().next().expect("len == 1");
+                return configured_provider_selection(
+                    name,
+                    provider,
+                    "single_configured_provider",
+                    cli.api_key.as_deref(),
+                );
             }
+            Err(no_custom_provider_error(&config_path, &config))
         }
         _ => select_configured_provider(cli, requested, "explicit_config_provider"),
     }
@@ -294,44 +218,7 @@ pub(crate) fn select_request_provider(
             cli.api_key.as_deref(),
         );
     }
-    if args.request_operation == RequestOperation::Responses
-        && inspect_codex_auth_file(Path::new(&cli.auth_file))
-            .get("ready")
-            .and_then(Value::as_bool)
-            .unwrap_or(false)
-    {
-        return Ok(ProviderSelection {
-            requested: "auto".to_string(),
-            resolved: "codex".to_string(),
-            reason: "auto_request_responses".to_string(),
-            kind: ProviderKind::Codex,
-            api_base: cli.openai_api_base.clone(),
-            codex_endpoint: cli.endpoint.clone(),
-            default_model: DEFAULT_CODEX_MODEL.to_string(),
-            supports_n: false,
-            edit_region_mode: EDIT_REGION_REFERENCE_HINT.to_string(),
-        });
-    }
-    if matches!(
-        args.request_operation,
-        RequestOperation::Generate | RequestOperation::Edit
-    ) && inspect_openai_auth(cli.api_key.as_deref())
-        .get("ready")
-        .and_then(Value::as_bool)
-        .unwrap_or(false)
-    {
-        return Ok(ProviderSelection {
-            requested: "auto".to_string(),
-            resolved: "openai".to_string(),
-            reason: "auto_request_images".to_string(),
-            kind: ProviderKind::OpenAi,
-            api_base: cli.openai_api_base.clone(),
-            codex_endpoint: cli.endpoint.clone(),
-            default_model: DEFAULT_OPENAI_MODEL.to_string(),
-            supports_n: true,
-            edit_region_mode: EDIT_REGION_NATIVE_MASK.to_string(),
-        });
-    }
+    let _ = args;
     select_image_provider(cli)
 }
 

@@ -74,14 +74,17 @@ pub(crate) fn convert_provider_input(
         }
         None => None,
     };
+    if input.provider_type != "openai-compatible" && input.provider_type != "openai" {
+        return Err("Only openai-compatible custom backends are enabled.".to_string());
+    }
     Ok((
         ProviderConfig {
-            provider_type: input.provider_type,
+            provider_type: "openai-compatible".to_string(),
             api_base: input.api_base,
             endpoint: input.endpoint,
             model: input.model,
             credentials,
-            supports_n: input.supports_n,
+            supports_n: Some(false),
             edit_region_mode: input.edit_region_mode,
             proxy,
         },

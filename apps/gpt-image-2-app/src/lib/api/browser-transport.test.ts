@@ -302,14 +302,14 @@ describe("browserApi", () => {
     expect(test.unsupported).toBe(true);
   });
 
-  it("uses native n for providers that support multiple outputs", async () => {
+  it("fans out n>1 as parallel single-image requests", async () => {
     const requests: CapturedRequest[] = [];
     vi.stubGlobal(
       "fetch",
       vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
         requests.push({ url: String(input), init });
         return okJson({
-          data: [{ b64_json: tinyPng }, { b64_json: tinyPng }],
+          data: [{ b64_json: tinyPng }],
         });
       }),
     );
@@ -329,8 +329,8 @@ describe("browserApi", () => {
     const bodies = requests.map((request) =>
       JSON.parse(String(request.init?.body)),
     );
-    expect(bodies).toHaveLength(1);
-    expect(bodies[0]).toMatchObject({ prompt: "native n", n: 2 });
+    expect(bodies).toHaveLength(2);
+    expect(bodies.every((body) => !("n" in body))).toBe(true);
   });
 
   it("retries generate jobs from the stored request with a new job id", async () => {

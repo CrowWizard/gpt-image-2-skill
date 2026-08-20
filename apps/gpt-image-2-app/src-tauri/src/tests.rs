@@ -55,7 +55,7 @@ fn default_provider_uses_configured_openai_capabilities() {
 fn builtin_openai_capabilities_are_fallback_when_config_absent() {
     let config = AppConfig::default();
 
-    assert!(provider_supports_n_from_config(
+    assert!(!provider_supports_n_from_config(
         Some(&config),
         Some("openai")
     ));

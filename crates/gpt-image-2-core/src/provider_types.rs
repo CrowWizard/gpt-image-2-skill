@@ -5,6 +5,7 @@ use super::*;
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub(crate) enum ProviderKind {
     OpenAi,
+    #[allow(dead_code)]
     Codex,
 }
 

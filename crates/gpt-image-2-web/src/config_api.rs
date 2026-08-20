@@ -237,8 +237,7 @@ pub(crate) async fn notification_capabilities() -> Json<Value> {
 
 pub(crate) async fn set_default_provider(Json(body): Json<DefaultProviderBody>) -> ApiResult {
     let mut config = load_config().map_err(ApiError::internal)?;
-    if !matches!(body.name.as_str(), "auto" | "openai" | "codex")
-        && !config.providers.contains_key(&body.name)
+    if !config.providers.contains_key(&body.name)
     {
         return Err(ApiError::bad_request(format!(
             "Unknown provider: {}",

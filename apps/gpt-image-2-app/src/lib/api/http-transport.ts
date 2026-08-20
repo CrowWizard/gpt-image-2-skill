@@ -78,7 +78,7 @@ export const httpApi: ApiClient = {
   // capability probe can flip this back on for self-hosters that did wire
   // a real keyring into their server.
   canUseSystemCredentials: false,
-  canUseCodexProvider: true,
+  canUseCodexProvider: false,
   canExportToDownloadsFolder: false,
   canExportToConfiguredFolder: false,
   canChooseExportFolder: false,

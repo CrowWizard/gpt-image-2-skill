@@ -48,7 +48,7 @@ fn configured_openai_provider_resolves_with_file_secret() {
                 value: "sk-test".to_string(),
             },
         )]),
-        supports_n: Some(true),
+        supports_n: Some(false),
         edit_region_mode: None,
         proxy: None,
     };

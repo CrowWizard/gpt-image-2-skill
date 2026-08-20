@@ -10,7 +10,7 @@ pub enum Background {
 }
 
 impl Background {
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Auto => "auto",
             Self::Transparent => "transparent",
@@ -28,7 +28,7 @@ pub enum Quality {
 }
 
 impl Quality {
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Auto => "auto",
             Self::Low => "low",
@@ -46,7 +46,7 @@ pub enum OutputFormat {
 }
 
 impl OutputFormat {
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Png => "png",
             Self::Jpeg => "jpeg",
@@ -62,7 +62,7 @@ pub enum Moderation {
 }
 
 impl Moderation {
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Auto => "auto",
             Self::Low => "low",
@@ -77,7 +77,7 @@ pub enum InputFidelity {
 }
 
 impl InputFidelity {
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::High => "high",
             Self::Low => "low",
@@ -93,7 +93,7 @@ pub enum RequestOperation {
 }
 
 impl RequestOperation {
-    pub(crate) fn as_str(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Responses => "responses",
             Self::Generate => "generate",

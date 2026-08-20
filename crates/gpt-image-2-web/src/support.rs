@@ -56,6 +56,12 @@ pub(crate) fn save_config(config: &AppConfig) -> Result<(), String> {
 }
 
 pub(crate) fn result_library_dir() -> PathBuf {
+    if std::env::var("GPT_IMAGE_2_DAEMON")
+        .map(|value| matches!(value.trim(), "1" | "true" | "yes" | "on"))
+        .unwrap_or(false)
+    {
+        return jobs_dir();
+    }
     product_result_library_dir(Some(&load_config_or_default()), ProductRuntime::DockerWeb)
 }
 
@@ -175,29 +181,6 @@ pub(crate) fn config_for_ui(config: &AppConfig) -> Value {
                 entry.insert("edit_region_mode".to_string(), json!(mode));
             }
         }
-        providers.entry("codex".to_string()).or_insert_with(|| {
-            json!({
-                "type": "codex",
-                "model": "gpt-5.4",
-                "supports_n": false,
-                "credentials": {},
-                "builtin": true,
-                "edit_region_mode": "reference-hint",
-            })
-        });
-        providers.entry("openai".to_string()).or_insert_with(|| {
-            json!({
-                "type": "openai-compatible",
-                "api_base": "https://api.openai.com/v1",
-                "model": "gpt-image-2",
-                "supports_n": true,
-                "credentials": {
-                    "api_key": {"source": "env", "env": "OPENAI_API_KEY"}
-                },
-                "builtin": true,
-                "edit_region_mode": "native-mask",
-            })
-        });
     }
     payload
 }

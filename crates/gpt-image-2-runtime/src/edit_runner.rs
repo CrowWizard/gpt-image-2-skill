@@ -113,7 +113,9 @@ pub fn run_edit_request(
     let (ref_paths, mask_path, edit_region_mode) =
         write_edit_inputs_with_region_mode(&request, &dir, &edit_region_mode)
             .map_err(error_value_from_message)?;
-    let payload = if provider_supports_n || output_count == 1 {
+    let _ = provider_supports_n;
+    // Upstream only honors n=1. n>1 is always fanned out as parallel single-image jobs.
+    let payload = if output_count == 1 {
         let out = dir.join(format!(
             "out.{}",
             output_extension(request.format.as_deref())
@@ -127,7 +129,7 @@ pub fn run_edit_request(
                 None
             },
             &out,
-            provider_supports_n,
+            false,
             Some((&fallback_id, &dir)),
         ))?
     } else {

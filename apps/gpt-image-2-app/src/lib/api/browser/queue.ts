@@ -216,12 +216,12 @@ export async function runGenerateTask(
   const apiKey = requireApiKey(providerName, provider);
   const planned = Math.max(1, Math.min(16, Math.floor(request.n ?? 1)));
   const partials: OutputRef[] = [];
-  if (provider.supports_n || planned === 1) {
+  if (planned === 1) {
     const blobs = await runGenerationRequest(
       request,
       provider,
       apiKey,
-      provider.supports_n ? planned : undefined,
+      undefined,
       task.abort.signal,
     );
     await saveBlobOutputs(task, blobs, partials);
@@ -270,12 +270,12 @@ export async function runEditTask(task: BrowserQueuedTask, form: FormData) {
   const apiKey = requireApiKey(providerName, provider);
   const planned = Math.max(1, Math.min(16, Math.floor(Number(meta.n) || 1)));
   const partials: OutputRef[] = [];
-  if (provider.supports_n || planned === 1) {
+  if (planned === 1) {
     const blobs = await runEditRequest(
       form,
       provider,
       apiKey,
-      provider.supports_n ? planned : undefined,
+      undefined,
       task.abort.signal,
     );
     await saveBlobOutputs(task, blobs, partials);

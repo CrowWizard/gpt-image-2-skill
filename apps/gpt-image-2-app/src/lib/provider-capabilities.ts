@@ -1,14 +1,10 @@
 import type { ProviderConfig, ServerConfig } from "./types";
 
 export function providerNativeSupportsMultipleOutputs(
-  config: ServerConfig | undefined,
-  provider: string,
+  _config: ServerConfig | undefined,
+  _provider: string,
 ) {
-  if (provider === "openai") return true;
-  if (provider === "codex") return false;
-  const cfg = provider ? config?.providers[provider] : undefined;
-  if (!cfg) return true;
-  return cfg.supports_n ?? cfg.type === "openai";
+  return false;
 }
 
 export function providerSupportsMultipleOutputs(_config: ServerConfig | undefined, _provider: string) {

@@ -1879,7 +1879,13 @@ dependencies = [
 name = "gpt-image-2-skill"
 version = "0.7.3"
 dependencies = [
+ "clap",
  "gpt-image-2-core",
+ "gpt-image-2-web",
+ "libc",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
  "tempfile",
 ]
 

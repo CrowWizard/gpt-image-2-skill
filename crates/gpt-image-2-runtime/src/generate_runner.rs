@@ -26,7 +26,9 @@ pub fn run_generate_request(
     if request.n.is_some() {
         request.n = Some(output_count);
     }
-    let payload = if provider_supports_n || output_count == 1 {
+    let _ = provider_supports_n;
+    // Upstream only honors n=1. n>1 is always fanned out as parallel single-image jobs.
+    let payload = if output_count == 1 {
         let out = dir.join(format!(
             "out.{}",
             output_extension(request.format.as_deref())
@@ -34,7 +36,7 @@ pub fn run_generate_request(
         cli_json_result(&generate_args_with_recovery(
             &request,
             &out,
-            provider_supports_n,
+            false,
             Some((&fallback_id, &dir)),
         ))?
     } else {

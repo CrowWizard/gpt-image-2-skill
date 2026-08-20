@@ -96,7 +96,7 @@ export const tauriApi: ApiClient = {
   canUseLocalFiles: true,
   canRevealFiles: true,
   canUseSystemCredentials: true,
-  canUseCodexProvider: true,
+  canUseCodexProvider: false,
   canExportToDownloadsFolder: true,
   canExportToConfiguredFolder: true,
   canChooseExportFolder: true,

@@ -117,6 +117,13 @@ pub(crate) fn run_config_add_provider(
     validate_provider_name(&args.name)?;
     let path = cli_config_path(cli);
     let mut config = load_app_config(&path)?;
+    if args.provider_type != "openai-compatible" {
+        return Err(AppError::new(
+            "provider_kind_unsupported",
+            "Only openai-compatible custom backends are enabled.",
+        )
+        .with_detail(json!({"type": args.provider_type})));
+    }
     if args.supports_n && args.no_supports_n {
         return Err(AppError::new(
             "invalid_provider_config",
@@ -176,13 +183,7 @@ pub(crate) fn run_config_add_provider(
             "codex" => Some(DEFAULT_CODEX_MODEL.to_string()),
             _ => Some(DEFAULT_OPENAI_MODEL.to_string()),
         });
-    let supports_n = if args.supports_n {
-        Some(true)
-    } else if args.no_supports_n {
-        Some(false)
-    } else {
-        None
-    };
+    let supports_n = Some(false);
     config.providers.insert(
         args.name.clone(),
         ProviderConfig {

@@ -21,21 +21,8 @@ pub fn selected_provider_from_config(
         })
 }
 
-pub fn provider_supports_n_from_config(config: Option<&AppConfig>, provider: Option<&str>) -> bool {
-    let selected = selected_provider_from_config(config, provider);
-    let Some(name) = selected.as_deref() else {
-        return true;
-    };
-    if let Some(provider) = config.and_then(|config| config.providers.get(name)) {
-        return provider
-            .supports_n
-            .unwrap_or(provider.provider_type == "openai");
-    }
-    match name {
-        "codex" => false,
-        "openai" => true,
-        _ => false,
-    }
+pub fn provider_supports_n_from_config(_config: Option<&AppConfig>, _provider: Option<&str>) -> bool {
+    false
 }
 
 pub fn default_edit_region_mode_for_provider_type(provider_type: &str) -> String {
@@ -108,7 +95,7 @@ mod tests {
     fn builtin_openai_capabilities_are_fallback_when_config_absent() {
         let config = AppConfig::default();
 
-        assert!(provider_supports_n_from_config(
+        assert!(!provider_supports_n_from_config(
             Some(&config),
             Some("openai")
         ));

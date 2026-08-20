@@ -178,6 +178,7 @@ pub(crate) fn run_openai_image_command(
     })
 }
 
+#[allow(dead_code)]
 pub(crate) fn run_codex_image_command(
     cli: &Cli,
     selection: &ProviderSelection,
@@ -378,33 +379,27 @@ pub(crate) fn run_batched_image_command(
             .into_iter()
             .map(|next| {
                 scope.spawn(move || {
-                    if matches!(selection.kind, ProviderKind::OpenAi) {
-                        run_openai_image_command(
-                            cli,
-                            selection,
-                            &next,
-                            operation,
-                            ref_images,
-                            mask,
-                            input_fidelity,
-                        )
-                    } else {
-                        run_codex_image_command(cli, selection, &next, operation, ref_images)
-                    }
+                    run_openai_image_command(
+                        cli,
+                        selection,
+                        &next,
+                        operation,
+                        ref_images,
+                        mask,
+                        input_fidelity,
+                    )
                 })
             })
             .collect::<Vec<_>>();
         let mut outcomes = Vec::with_capacity(handles.len());
         for handle in handles {
-            outcomes.push(handle.join().map_err(|_| {
-                AppError::new(
-                    "batch_worker_failed",
-                    "Batch image request worker panicked.",
-                )
-            })??);
+            match handle.join() {
+                Ok(Ok(outcome)) => outcomes.push(outcome),
+                Ok(Err(_)) | Err(_) => {}
+            }
         }
-        Ok::<_, AppError>(outcomes)
-    })?;
+        outcomes
+    });
     let saved_files = normalize_batch_saved_files(
         outcomes
             .iter()
@@ -461,7 +456,7 @@ pub(crate) fn run_images_command(
     let selection = select_image_provider(cli)?;
     match subcommand {
         ImagesSubcommand::Generate(args) => {
-            let use_batch = args.shared.n.unwrap_or(1) > 1 && !selection.supports_n;
+            let use_batch = args.shared.n.unwrap_or(1) > 1;
             let mut validation_shared = args.shared.clone();
             if use_batch {
                 validation_shared.n = None;
@@ -478,15 +473,11 @@ pub(crate) fn run_images_command(
                     None,
                 );
             }
-            if matches!(selection.kind, ProviderKind::OpenAi) {
-                run_openai_image_command(cli, &selection, &args.shared, "generate", &[], None, None)
-            } else {
-                run_codex_image_command(cli, &selection, &args.shared, "generate", &[])
-            }
+            run_openai_image_command(cli, &selection, &args.shared, "generate", &[], None, None)
         }
         ImagesSubcommand::Edit(args) => {
             validate_reference_image_count(args.ref_image.len())?;
-            let use_batch = args.shared.n.unwrap_or(1) > 1 && !selection.supports_n;
+            let use_batch = args.shared.n.unwrap_or(1) > 1;
             let mut validation_shared = args.shared.clone();
             if use_batch {
                 validation_shared.n = None;
@@ -508,19 +499,15 @@ pub(crate) fn run_images_command(
                     args.input_fidelity,
                 );
             }
-            if matches!(selection.kind, ProviderKind::OpenAi) {
-                run_openai_image_command(
-                    cli,
-                    &selection,
-                    &args.shared,
-                    "edit",
-                    &args.ref_image,
-                    args.mask.as_deref(),
-                    args.input_fidelity,
-                )
-            } else {
-                run_codex_image_command(cli, &selection, &args.shared, "edit", &args.ref_image)
-            }
+            run_openai_image_command(
+                cli,
+                &selection,
+                &args.shared,
+                "edit",
+                &args.ref_image,
+                args.mask.as_deref(),
+                args.input_fidelity,
+            )
         }
     }
 }

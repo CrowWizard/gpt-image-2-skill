@@ -208,35 +208,7 @@ impl PathConfigExt for PathConfig {
 }
 
 pub(crate) fn config_for_ui(config: &AppConfig) -> Value {
-    let mut payload = redact_app_config(config);
-    if let Some(providers) = payload.get_mut("providers").and_then(Value::as_object_mut) {
-        providers.entry("codex".to_string()).or_insert_with(|| {
-            json!({
-                "type": "codex",
-                "model": "gpt-5.4",
-                "supports_n": false,
-                "credentials": {},
-                "builtin": true,
-                "supports_n": false,
-                "edit_region_mode": "reference-hint",
-            })
-        });
-        providers.entry("openai".to_string()).or_insert_with(|| {
-            json!({
-                "type": "openai-compatible",
-                "api_base": "https://api.openai.com/v1",
-                "model": "gpt-image-2",
-                "supports_n": true,
-                "credentials": {
-                    "api_key": {"source": "env", "env": "OPENAI_API_KEY"}
-                },
-                "builtin": true,
-                "supports_n": true,
-                "edit_region_mode": "native-mask",
-            })
-        });
-    }
-    payload
+    redact_app_config(config)
 }
 
 pub(crate) fn dispatch_notifications_for_job(job: &Value) -> Vec<Value> {

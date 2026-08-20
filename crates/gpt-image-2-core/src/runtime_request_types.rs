@@ -27,13 +27,13 @@ pub struct GenerateRequest {
     pub fallback_targets: Option<Vec<String>>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct UploadFile {
     pub name: String,
     pub bytes: Vec<u8>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct EditRequest {
     pub prompt: String,
     #[serde(default)]

@@ -1,0 +1,83 @@
+# Build the Windows x64 CLI/Skill binary (x86_64-pc-windows-msvc).
+#
+# Only compiles `gpt-image-2-skill` (and its Rust deps). Does not build the
+# Tauri desktop app. Trigger from Actions → "Build Windows x64 CLI".
+name: Build Windows x64 CLI
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "crates/gpt-image-2-skill/**"
+      - "crates/gpt-image-2-core/**"
+      - "crates/gpt-image-2-runtime/**"
+      - "crates/gpt-image-2-web/**"
+      - "Cargo.lock"
+      - ".github/workflows/build-windows-x64.yml"
+  pull_request:
+    paths:
+      - "crates/gpt-image-2-skill/**"
+      - "crates/gpt-image-2-core/**"
+      - "crates/gpt-image-2-runtime/**"
+      - "crates/gpt-image-2-web/**"
+      - "Cargo.lock"
+      - ".github/workflows/build-windows-x64.yml"
+
+concurrency:
+  group: build-windows-x64-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_TARGET: x86_64-pc-windows-msvc
+
+jobs:
+  build:
+    name: gpt-image-2-skill (windows-x64)
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ env.RUST_TARGET }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ env.RUST_TARGET }}-gpt-image-2-skill
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Build
+        shell: pwsh
+        run: |
+          cargo build --release --locked `
+            -p gpt-image-2-skill `
+            --target $env:RUST_TARGET
+
+      - name: Stage artifact
+        shell: pwsh
+        run: |
+          $exe = "target/$env:RUST_TARGET/release/gpt-image-2-skill.exe"
+          if (-not (Test-Path $exe)) {
+            throw "Missing binary: $exe"
+          }
+          $version = (Select-String -Path crates/gpt-image-2-skill/Cargo.toml -Pattern '^version = "(.+)"').Matches.Groups[1].Value
+          $outDir = "dist/gpt-image-2-skill-$version-x86_64-pc-windows-msvc"
+          New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+          Copy-Item $exe "$outDir/gpt-image-2-skill.exe"
+          Get-FileHash "$outDir/gpt-image-2-skill.exe" -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash.ToLower())  gpt-image-2-skill.exe" } |
+            Set-Content -Encoding ascii "$outDir/SHA256SUMS"
+          Compress-Archive -Path "$outDir/*" -DestinationPath "$outDir.zip" -Force
+          "ASSET=$outDir.zip" | Out-File -FilePath $env:GITHUB_ENV -Append
+          Write-Host "Staged $outDir.zip"
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: gpt-image-2-skill-x86_64-pc-windows-msvc
+          path: ${{ env.ASSET }}
+          if-no-files-found: error
+          retention-days: 14
