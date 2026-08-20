@@ -1,0 +1,86 @@
+# Build the macOS CLI/Skill binary (aarch64 and x86_64 apple-darwin).
+#
+# Only compiles `gpt-image-2-skill` (and its Rust deps). Does not build the
+# Tauri desktop app. Trigger from Actions → "Build macOS CLI".
+name: Build macOS CLI
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "crates/gpt-image-2-skill/**"
+      - "crates/gpt-image-2-core/**"
+      - "crates/gpt-image-2-runtime/**"
+      - "crates/gpt-image-2-web/**"
+      - "Cargo.lock"
+      - ".github/workflows/build-macos.yml"
+  pull_request:
+    paths:
+      - "crates/gpt-image-2-skill/**"
+      - "crates/gpt-image-2-core/**"
+      - "crates/gpt-image-2-runtime/**"
+      - "crates/gpt-image-2-web/**"
+      - "Cargo.lock"
+      - ".github/workflows/build-macos.yml"
+
+concurrency:
+  group: build-macos-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: gpt-image-2-skill (${{ matrix.target }})
+    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - aarch64-apple-darwin
+          - x86_64-apple-darwin
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}-gpt-image-2-skill
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Build
+        run: |
+          cargo build --release --locked \
+            -p gpt-image-2-skill \
+            --target "${{ matrix.target }}"
+
+      - name: Stage artifact
+        run: |
+          bin="target/${{ matrix.target }}/release/gpt-image-2-skill"
+          if [[ ! -x "$bin" ]]; then
+            echo "Missing binary: $bin" >&2
+            exit 1
+          fi
+          version="$(sed -n 's/^version = "\(.*\)"/\1/p' crates/gpt-image-2-skill/Cargo.toml | head -n 1)"
+          out_dir="dist/gpt-image-2-skill-${version}-${{ matrix.target }}"
+          mkdir -p "$out_dir"
+          cp "$bin" "$out_dir/gpt-image-2-skill"
+          shasum -a 256 "$out_dir/gpt-image-2-skill" |
+            awk '{ print tolower($1) "  gpt-image-2-skill" }' > "$out_dir/SHA256SUMS"
+          tar -C dist -czf "${out_dir}.tar.gz" "$(basename "$out_dir")"
+          echo "ASSET=${out_dir}.tar.gz" >> "$GITHUB_ENV"
+          echo "Staged ${out_dir}.tar.gz"
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: gpt-image-2-skill-${{ matrix.target }}
+          path: ${{ env.ASSET }}
+          if-no-files-found: error
+          retention-days: 14

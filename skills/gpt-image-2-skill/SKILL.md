@@ -65,6 +65,16 @@ Read `pending`, `completed`, `failed`, `done`, `all_ok`, and `tasks[]`. If `pend
 
 `jobs status --id <job_id>` works for a single id.
 
+### Batch chat delivery: display finished pages immediately
+
+When a batch creates user-facing images, track `name` values already displayed. On every `jobs status` poll, find tasks whose status is `completed` and whose names have not yet been displayed. Verify that each recorded `out` file exists, then immediately render every newly finished page in the chat using a Markdown image with its absolute path:
+
+```markdown
+![01 main premium](C:/absolute/path/to/01_main_premium.png)
+```
+
+Do not wait for the whole batch before displaying successful images. Continue polling pending tasks every 30-60 seconds and display newly completed pages after each poll. Never display a failed or missing output as a result. At final completion, report the total succeeded and failed counts and link the output folder/files; do not re-render pages already shown.
+
 Daemon runs up to 10 jobs at once. Enqueue is sequential and cheap; renders overlap in the daemon.
 
 ### One image
