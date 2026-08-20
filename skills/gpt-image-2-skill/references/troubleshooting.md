@@ -123,6 +123,19 @@ Dual extraction requires black/white source images with identical dimensions. Re
 
 OpenAI may reject prompts. The runtime surfaces the upstream error verbatim under `error.detail`. Adjust the prompt or set `--moderation low` (where supported by the account) and retry.
 
+## Windows: a new `gpt-image-2-skill.exe` on every image
+
+A PowerShell `foreach` that calls `& $cli images edit` starts a new **client** process each iteration. That is expected. The long-lived daemon at `http://127.0.0.1:8787/api` must keep the same pid.
+
+If every page prints `starting shared daemon` (instead of `reusing daemon pid=...`), or `daemon status` pid changes between images, the client is still inside a Windows Job Object that kills the daemon when `& $cli` returns. Fix:
+
+1. Replace `scripts/gpt-image-2-skill.exe` with a build that detaches from the Job (breakaway / WMI). Older binaries spawn the daemon as a child of the client, so it dies at the end of each page.
+2. Start once before the loop: `& $cli daemon start`
+3. Confirm `& $cli daemon status` reports the same `pid` after page 1 and page 2.
+4. Do not `daemon stop` until the batch is done.
+
+`GPT_IMAGE_2_SKIP_DAEMON=1` disables the shared process and is slower; do not use it for a multi-page batch.
+
 ## Network and timeout
 
 - `network_error` — transport-level failure (DNS, TLS, connection reset). Retried automatically.

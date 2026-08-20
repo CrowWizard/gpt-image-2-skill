@@ -17,6 +17,26 @@ Run image generation and editing through one CLI surface that hides provider dif
 
 Always pass `--json` so the result is machine-readable. Add `--json-events` when progress visibility matters.
 
+## Local daemon (reuse one process)
+
+`images generate` and `images edit` enqueue work on a loopback daemon at `http://127.0.0.1:8787/api`. Each CLI invocation is a **short-lived client**. The daemon is a second long-lived process and **must be reused** across a batch. Do not call `daemon stop` between pages.
+
+On Windows, PowerShell `& $cli` and Codex run that client inside a Job Object that kills child processes when the client exits. The binary breaks away from the Job (or starts via WMI when breakaway is blocked) so one daemon survives the whole loop. Seeing a brief extra `gpt-image-2-skill.exe` per page is the client and is expected; `daemon status` must keep the same `pid`.
+
+Stderr `reusing daemon pid=...` means reuse is working. `starting shared daemon` on every image means the installed exe is stale — replace `scripts/gpt-image-2-skill.exe` with a build that includes this detach, then start once:
+
+```powershell
+$cli = Join-Path $env:USERPROFILE '.codex\skills\gpt-image-2-skill\scripts\gpt-image-2-skill.exe'
+& $cli daemon start
+foreach ($page in $pages) {
+  & $cli --json --json-events --provider official-openai images edit `
+    --prompt $page.Text --ref-image $reference --out $outFile `
+    --format png --size 1536x2048 --quality medium --input-fidelity high
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+# optional, after the batch: & $cli daemon stop
+```
+
 ```bash
 # 1. Confirm runtime + provider readiness
 node scripts/gpt_image_2_skill.cjs --json config inspect

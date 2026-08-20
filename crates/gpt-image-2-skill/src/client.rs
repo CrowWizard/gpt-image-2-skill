@@ -54,6 +54,7 @@ fn run_images_via_daemon(cli: &Cli, command: &ImagesSubcommand) -> Result<Value,
     let info = daemon::ensure_running()?;
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(120))
+        .no_proxy()
         .build()
         .map_err(|error| error.to_string())?;
     let (path, body, out) = match command {
