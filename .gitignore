@@ -14,6 +14,11 @@ apps/gpt-image-2-app/src-tauri/bin/
 .npm/
 .omc/
 .claude/
+.autohand/
+out/
+yuanshi.jpg
+ailili-edit-prompt.txt
+
 design-concepts/
 packages/npm/gpt-image-2-skill-linux-arm64-gnu/bin/gpt-image-2-skill
 packages/npm/gpt-image-2-skill-linux-x64-gnu/bin/gpt-image-2-skill
